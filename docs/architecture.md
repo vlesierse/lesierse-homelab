@@ -27,20 +27,26 @@ flowchart TB
             Plaiteo["501 · plaiteo runner — stopped"]
         end
         PBS["Proxmox Backup Server services\nrun on the Proxmox host"]
-        SharedData["Large shared data filesystem\nmounted by share and servarr"]
+        SharedData["Large shared data filesystem\nmounted by share, servarr, and Jellyfin"]
+        Datastore["PBS datastore"]
+        LocalDisk["Host filesystem backing\nshared data and PBS datastore"]
         PVE --- Guests
         PVE --- PBS
         Share --- SharedData
         Servarr --- SharedData
+        Jellyfin --- SharedData
+        PBS --- Datastore
+        SharedData --- LocalDisk
+        Datastore --- LocalDisk
     end
 
     subgraph Cloud["Cloud — bounded discovery"]
-        AWS["AWS · eu-west-1\nS3 and Lambda resources observed"]
-        Entra["Microsoft Entra\napplication registrations observed;\nownership and use not classified"]
+        AWS["AWS · eu-west-1\nS3 resource observed;\nno Lambda functions observed"]
+        Entra["Microsoft Entra\none application registration observed;\nclassified out of scope"]
     end
 ```
 
-The diagram groups related components; it does not assert network connectivity or service-to-service dependencies beyond the shared filesystem mounts and the placement of PBS services on the Proxmox host.
+The diagram groups related components; it does not assert network connectivity or service-to-service dependencies beyond the shared filesystem mounts and storage relationships shown.
 
 ### Observed inventory
 
@@ -48,13 +54,31 @@ The diagram groups related components; it does not assert network connectivity o
 |---|---|---|
 | Proxmox | One host; nine LXC guests: seven running and two stopped, as shown above. | Guest configuration ownership, external dependencies, and whether stopped guests remain in scope. |
 | Guest services | Share provides file-sharing services; servarr runs Docker-managed media-management services; Vaultwarden, Hermes dashboard, Jellyfin, Minecraft controller, and GitHub runner services were observed. | Full service contracts, data consistency requirements, exposure, and recovery priority for each workload. |
-| Storage | A large shared filesystem is mounted by share and servarr; roughly 3.8 TB was reported used across the observed large storage figures. | Protected-data size, exact shared-data contents, physical device mapping for every mount, and which data is replaceable. |
-| Local backups | PBS services run on the Proxmox host. A daily 01:00 guest-backup job targets PBS and excludes runner guests 500 and 501. | Datastore backing device/location, retention, job success history, shared/bind-mount coverage, encryption, key independence, and successful restore evidence. Same-host PBS does not establish protection from host loss. |
-| Network access | Tailscale was observed on the host and some guests. | Full membership, access paths, DNS, firewall/public exposure, and which services depend on external network access. |
-| AWS | Bounded read-only discovery in `eu-west-1` found S3 and Lambda resources. | Complete service/region inventory and which resources are homelab-owned. |
-| Entra | Application registrations were observed. | Which registrations, enterprise applications, or assignments are homelab-owned or required for recovery. |
+| Storage | Share, servarr, and Jellyfin mount the same shared volume. Its backing file and the PBS datastore reside on the same host filesystem on a single disk; that filesystem reports approximately 3.5 TiB used, including the datastore. Guest root filesystems reside on ZFS storage. | Protected-data size and change rate, exact shared-data classification, and whether other storage or off-site copies exist. The filesystem usage is not the size of protected data. |
+| Local backups | PBS services run on the Proxmox host. A daily 01:00 snapshot job targets PBS, excludes runner guests 500 and 501, and reports success for its ten most recent runs. The latest job completed backups of the other seven guests, but explicitly excluded the shared volume from all three guests that mount it. The PBS prune job is configured for keep-last 3, keep-daily 3, and keep-weekly 1. | Application consistency, actual retained recovery points, encryption, key independence, notifications, and successful restore evidence. The excluded shared volume is not covered by this guest-backup job; other backup coverage is unknown. Same-host PBS on the same disk does not establish protection from host loss. |
+| Network access | Tailscale was observed on the host and some guests. The owner reports that access is mainly through Tailscale and that no workload is intentionally public. | Full membership, access paths, DNS, firewall rules, independently verified exposure, and which services depend on external network access. |
+| AWS | Bounded read-only discovery in `eu-west-1` found one S3 bucket and, after the owner removed a previously observed Lambda, no Lambda functions. The owner classified the existing bucket and former Lambda as out of scope. | Other service inventory, account recovery dependencies, and any homelab-owned resources not yet identified. The owner identified only this region and these services for initial discovery. |
+| Entra | One application registration and service principals were observed in the requested tenant. The owner classified that registration as out of scope. An earlier listing was from a different tenant and is not evidence about the requested tenant. | Whether other enterprise applications or assignments are homelab-owned or required for recovery. |
 
-These are inventory observations, not proof that backups are restorable or that recovery objectives are currently met. No credentials, environment values, guest configuration, or application data are documented here.
+These are inventory observations, not proof that backups are restorable or that recovery objectives are currently met. No credentials, environment values, detailed guest configuration, or application data are documented here.
+
+### Protected-data inventory in progress
+
+| Dataset | Current evidence and classification | Remaining gaps |
+|---|---|---|
+| Home videos | The owner identified a directory on the shared volume containing protected home videos. A read-only measurement on 2026-11-25 found approximately 52.0 GiB allocated in that directory. The guest-backup job excludes the volume. | Contents are not individually classified; change rate, consistency, and exact off-site sizing remain unknown. |
+| Future photos | The owner identified a planned location on the shared volume; it did not exist on 2026-11-25. Photos are protected data when present. | Expected size, growth, and coverage when the location is created. |
+| Vaultwarden | Credentials are an essential recovery concern. The owner reports configuration is on the guest disk. A standard database file exists in the process working directory, which used approximately 116 KiB on 2026-11-25; the guest root filesystem is included in the guest-backup job. | Verify the active database and any attachment locations, consistency requirements, and recovery procedure; file presence alone does not establish data coverage. |
+| Minecraft | The owner confirmed all worlds and game state should be protected, even though the workload is best-effort. The guest root filesystem is included in the guest-backup job; world marker files were found under the controller installation, which used approximately 538 MiB on 2026-11-25. | Verify all world and configuration locations, consistency requirements, and recovery procedure; the installation measurement may include other data and may not cover external locations. |
+| Servarr | The owner wants configuration and library metadata protected. The guest root filesystem is included in the guest-backup job, while the shared volume is excluded. Inspected Docker configuration bind mounts use a directory on the guest root filesystem, which used approximately 363 MiB on 2026-11-25. | Verify all application data locations, consistency requirements, and which metadata resides on the shared volume; the directory measurement may include non-protected data. |
+| Jellyfin and related statistics | The owner identified catalog, user, and viewing-statistics data as protected. The running Jellyfin service uses a working directory on its guest root filesystem, which used approximately 1.5 GiB on 2026-11-25. A separate Jellystat service and PostgreSQL container were also observed in servarr, with a database bind directory on its guest root filesystem. Both root filesystems are included in the guest-backup job. | Verify which databases contain the required data, their full locations, consistency requirements, and recovery procedure; directory sizes do not establish protected-data size. |
+| Hermes dashboard | The owner identified irreplaceable state or recovery-critical configuration. The running dashboard uses a working directory on its guest root filesystem, which used approximately 8.0 GiB on 2026-11-25. The root filesystem is included in the guest-backup job. | Identify the protected data and its actual location, size, consistency requirements, and recovery procedure; the working-directory measurement includes other data. |
+
+The owner reports no existing off-site copies or backup plan, despite the configured local job. Downloaded films, TV, and music can be replaced; the owner also excludes temporary downloads. These exclusions do not apply to home videos or future photos. No broader exclusion is implied. The owner estimates approximately 2 GB of new or changed protected data per month. The measurements above are not measurements of all protected data or its change rate; retained-history, request, and restore costs cannot yet be established.
+
+The owner reports using an independent Bitwarden service for access credentials, rather than the Vaultwarden guest, and being able to access and recover it without Entra or the homelab. This has not been tested as part of a recovery exercise. A complete independently held recovery kit has not been established.
+
+The owner reports no irreplaceable state or recovery-critical configuration for the printer and runners. The stopped guests remain untouched.
 
 ## Intended management and change flow
 
