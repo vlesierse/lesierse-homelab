@@ -67,9 +67,17 @@ metadata without reading data contents or publishing private filenames.
 
 On 2026-11-26 the running Vaultwarden and Jellyfin processes each had a
 database file and its WAL and shared-memory files open. Copying only the main
-database file would not establish a consistent backup. No process named `java`
-was observed in the Minecraft guest that day; this does not exclude other
-server implementations or establish where all worlds are stored.
+database file would not establish a consistent backup. In the media-management
+guest, database-like files and SQLite WAL/shared-memory sidecars were present
+for Bazarr, Lidarr, Prowlarr, Radarr, and Sonarr; their presence alone does
+not prove current activity or backup consistency. The running Jellystat
+PostgreSQL container's `postgres` and `pg_dump` utilities both reported
+version 15.2; no dump was attempted. A Bedrock server was
+running in the Minecraft guest, with one candidate world directory under its
+working directory and three open file descriptors beneath that directory.
+Four world markers were found in the controller's server tree. No process
+named `java` was observed; these observations do not establish where every
+world or its configuration is stored.
 
 ## Preferred PBS path
 
@@ -83,7 +91,8 @@ file copy.
 
 The proposed path is to encrypt backups at the PVE or PBS client, write them
 to the local datastore, and sync the selected encrypted snapshots to a
-separate S3-backed datastore. The exact sync configuration still needs
+separate S3-backed datastore. A narrow local-to-S3 sync configuration passed
+the disposable pilot below; production coverage and scheduling still need
 validation. Do not propagate locally vanished snapshots to the off-site
 datastore: prune the latter independently for its longer history. Ensure
 snapshots reach S3 before local pruning, and alert if expected backups or
@@ -120,6 +129,36 @@ backend has not been established. Any credential approach needs narrowly
 scoped permissions, rotation, and independent recovery; do not put secrets in
 Git, command history, or process arguments.
 
+## Disposable PBS-to-S3 pilot
+
+On 2026-11-26, the existing PBS 4.2.14-1 installation synced two client-side
+encrypted snapshots of a generated 32 MiB file from a temporary local
+datastore to a temporary S3-backed datastore. The unscheduled sync selected
+only the test group, accepted encrypted snapshots only, and did not remove
+vanished snapshots. It used a test-only S3 bucket and bucket-scoped IAM
+credentials.
+
+- The first sync reported 32.001 MiB in 10 chunks. After a 1,600-byte change,
+  the second reported 5.301 MiB in three chunks. Initial S3 chunk objects
+  totaled 33,555,308 bytes; newly added chunks totaled 5,558,537 bytes.
+  This demonstrates reuse for this sample, not the production change rate,
+  bandwidth, request count, or cost.
+- Deleting the first local test snapshot and syncing again left both
+  snapshots in the S3 datastore. This checks non-propagation for one
+  deletion, not the three-day or 7 daily / 4 weekly / 3 monthly schedules.
+- After detaching the test S3 datastore, removing its cache, and reconnecting
+  it under the same name with a new cache, both snapshots restored with
+  matching SHA-256 digests. A different test key was rejected. This reused
+  the same PBS installation and did not test a fresh installation or
+  independent key recovery.
+
+The temporary PBS resources and directory, IAM credentials and user, and S3
+bucket and objects were removed after the pilot. Only synthetic data was
+used; no production backups or workloads were modified. The pilot did not
+test application consistency, independent deletion protection, account
+recovery, production costs, or the 24-hour objectives. No off-site
+homelab backup was established.
+
 ## Independent deletion protection remains open
 
 The PBS S3 backend requires object deletion for maintenance. Proxmox staff
@@ -146,6 +185,13 @@ with a live PBS datastore, a consistent restore of all required chunks and
 metadata, authority separation, and costs are unproven. It also charges
 minimum 128 KB per backed-up S3 object, making object counts relevant.
 Its initial backup includes existing object versions and delete markers.
+AWS documents point-in-time consistency for its S3 backups, but that does not
+establish PBS-level consistency during sync or maintenance. Continuous
+recovery points have a maximum 35-day window; cross-account or cross-region
+copies are available, but copies of continuous backups do not support
+point-in-time restore. Longer protection therefore needs periodic recovery
+points and tested retention. AWS Backup does not restore bucket configuration,
+so policies and settings must be recoverable separately.
 Continuous backups depend on S3 EventBridge notifications: AWS documents that
 disabling those notifications silently stops new changes being captured.
 Any such design needs independent monitoring and protection of that dependency.
@@ -154,17 +200,25 @@ configure lifecycle expiration or lock policies until their interaction with
 PBS retention and maintenance has been demonstrated safely.
 
 For application consistency, evaluate SQLite's online backup API for
-Vaultwarden and PostgreSQL's logical backup tools for the observed statistics
-database. The vault guest did not have the `sqlite3` executable available
+Vaultwarden and the media-management databases, and PostgreSQL's logical
+backup tools for the observed statistics database. A database dump alone may
+not capture PostgreSQL roles, extensions, or other restoration prerequisites.
+The vault guest did not have the `sqlite3` executable available
 during discovery. Jellyfin's documented built-in backup supports online
 database backup, with metadata optional; the installed package version on
 2026-11-26 was newer than the version that introduced it. Verify automation,
 required configuration and metadata coverage, free-space requirements, and
 restoration before relying on it. Jellyfin's manual backup instructions
 require stopping the service. Crafty's documentation recommends stopping a
-game server during its file-copy backup; an acceptable no-disruption
-consistency method is not yet established. No application backup or service
-stop was performed.
+game server during its file-copy backup. The installed Bedrock server's
+vendor documentation describes an online alternative: `save hold`, poll
+`save query` until it returns the file list and lengths, copy only those
+files and truncate the copies to the reported lengths, then `save resume`.
+The server can keep running and modify files during this process; an ordinary
+live directory copy is not equivalent. A solution must guarantee resume after
+failure and verify complete world and configuration coverage and a usable
+restore. Neither approach has been tested. No application backup, save
+command, or service stop was performed.
 
 Identify and validate the actual databases, attachments, configuration, and
 Minecraft save/quiesce mechanism first. Avoid executing backup actions stored
@@ -253,3 +307,5 @@ the recovery objectives should be described as implemented.
   [PostgreSQL SQL dumps](https://www.postgresql.org/docs/current/backup-dump.html).
 - [Jellyfin backup and restore](https://jellyfin.org/docs/general/administration/backup-and-restore/)
   and [Crafty backup manager](https://docs.craftycontrol.com/pages/user-guide/backup-manager/).
+  The Bedrock online-backup protocol was also checked against the vendor
+  how-to distributed beside the running server on 2026-11-26.
