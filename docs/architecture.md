@@ -108,6 +108,25 @@ The owner reports using an independent Bitwarden service for access credentials,
 
 The owner reports no irreplaceable state or recovery-critical configuration for the printer and runners. The stopped guests remain untouched.
 
+### Discovery still required
+
+- Obtain read-only access to the relevant DNS, Tailscale policy, and upstream
+  firewall and forwarding configuration, then verify reachable ingress from
+  outside the home network. Listener bindings do not establish public exposure.
+  UniFi management remains out of scope.
+- Resolve the recovery order for Share, its selected data, and Hermes with the
+  owner. Identify the dashboard's actual protected state and confirm all
+  application databases, attachments, world files, and shared-volume metadata
+  without publishing filenames or contents.
+- Measure the complete selected datasets and repeat comparable measurements
+  over time; used space alone does not measure changed bytes. Measure actual
+  backup churn, retained history, request counts, and restore/exercise costs
+  before deciding whether the EUR 25/month ceiling is feasible.
+- Identify independently recoverable keys and access, application-consistent
+  backup methods, retention and deletion protection, and an isolated
+  fresh-install restore path. The current evidence does not prove either
+  24-hour objective.
+
 ## Intended management and change flow
 
 ```mermaid
