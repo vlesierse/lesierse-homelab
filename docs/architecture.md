@@ -116,6 +116,12 @@ The owner reports no irreplaceable state or recovery-critical configuration for 
 
 ### Discovery still required
 
+As of 2026-11-26, the owner narrowed the active work on issue #2 to cost
+assessment and isolated recovery testing. Remaining inventory and workload
+coverage questions are deferred to
+[backlog issue #6](https://github.com/vlesierse/lesierse-homelab/issues/6);
+their presence here records known uncertainty, not active discovery scope.
+
 - The owner reports no public exposure and says people admitted to the tailnet
   can reach selected services. Gateway forwarding was not inspected because
   UniFi management is out of scope; public DNS has not been independently

@@ -5,16 +5,22 @@ path, not a deployed system or a recovery procedure. No off-site homelab copies
 have been established. The [architecture overview](architecture.md) records the
 current inventory, local backup gaps, and remaining dataset unknowns.
 
-## Requirements and sizing
+As of 2026-11-26, the owner narrowed the active work on issue #2 to costs and
+isolated recovery testing. Remaining ownership, classification, dependency,
+and workload-coverage inventory is deferred to [backlog issue
+#6](https://github.com/vlesierse/lesierse-homelab/issues/6). The candidate
+datasets and gaps below are cost-model context and known limitations, not a
+claim that the deferred inventory is complete.
 
-- Protect the entire identified home-video directory, future photos,
-  Vaultwarden data, all Minecraft worlds and state, servarr configuration and
-  library metadata, Jellyfin and related statistics, and the dashboard's
-  irreplaceable state or recovery-critical configuration. Identify any other
-  non-reproducible data before declaring coverage complete.
+## Cost-model inputs and recovery-test scope
+
+- The conditional cost scenario below uses the currently documented video
+  directory and whole guest roots as sizing inputs. These are not a validated
+  selection of all protected data; unknown datasets, incomplete workload
+  classification, and changing data are deferred to #6.
 - Exclude replaceable downloaded films, TV, and music, caches, and temporary
-  downloads; never exclude home videos or future photos merely because they
-  are media.
+  downloads from the illustrative scenario; these assumptions do not establish
+  final backup exclusions.
 - Laptop and other personal-device backups are outside this work; the owner
   reports a separate device-backup arrangement. That does not establish
   coverage of data stored only on the homelab.
@@ -24,6 +30,9 @@ current inventory, local backup gaps, and remaining dataset unknowns.
 - Protect backups from complete host loss, accidental deletion, and compromise
   of routine deployment credentials. The backup deletion authority and
   emergency access must be independent of routine deployment.
+- Use isolated, non-destructive tests with synthetic data or existing approved
+  test artifacts. Do not modify production backups, services, or cloud
+  resources without separate approval.
 - The objectives are at most 24 hours of data loss and usable essential
   workloads within 24 hours after hardware and internet are available.
   Neither objective is proven.
@@ -65,12 +74,14 @@ about 8 Mbps continuously, before allowing time for provisioning, database
 restoration, application validation, retries, or protocol overhead. This
 calculation does not prove the recovery objective.
 
-## Known locations to verify
+## Known locations and coverage gaps (backlog context)
 
 These are observed or owner-identified locations, not a complete backup
-selection. Paths are inside the named guests; discovery examined filesystem
-metadata, selected configuration values, and database schema names without
-publishing private filenames, application records, or secrets.
+selection. Paths are inside the named guests; bounded discovery examined
+filesystem metadata, selected configuration values, and database schema names
+without publishing private filenames, application records, or secrets.
+Resolving the remaining location and coverage questions is deferred to #6;
+this context informs the cost estimate and does not expand the active work.
 
 | Dataset | Candidate location |
 |---|---|
@@ -355,13 +366,16 @@ minimum object size, source versions, additional S3 requests, events, and
 restore requests. This does not establish that the vault approach works with
 PBS or fits the ceiling.
 
-## Decision and production gates
+## Deferred inventory gate
 
-Before finalizing the PBS path, identify the active data and attachment
+Before finalizing production coverage, identify the active data and attachment
 locations, including dashboard state and every Minecraft world. Evaluate the
 application-consistency, retention, independent-deletion, key-recovery, and
 fresh-install restore approach against those locations and the cost ceiling.
-Record any remaining assumptions rather than treating this estimate as proof.
+This inventory work is deferred to #6; record assumptions rather than treating
+the current cost estimate or synthetic tests as proof of coverage.
+
+## Recovery-test and production gates
 
 Before production use, verify retention, maintenance, and recovery after
 deletion or compromise of a routine credential with synthetic data and
