@@ -43,6 +43,22 @@ The latest available local PBS garbage-collection report recorded about
 It is not a measurement of the proposed S3 datastore or its object versions.
 The latest observed guest job excluded the shared volume.
 
+On 2026-11-26, the latest guest-root archive manifests in the observed
+datastore's root namespace for all nine guests reported PBS client-encryption
+mode `none`: seven snapshots were dated 2026-11-26 and the two excluded
+runners' snapshots were dated 2026-11-24. Three sampled Vaultwarden archive
+chunk headers also reported `none`. Encryption of other archives and
+snapshots, or at the disk layer, remains unverified.
+
+For the six running workload guest-root archives, a read-only comparison of
+the 2026-11-25 and 2026-11-26 PBS indexes found 270 distinct chunks referenced
+by the later archives but absent from all six earlier archives. The local
+encoded chunk files totalled 496,870,477 bytes (473.9 MiB). This is a roughly
+24-hour reference-set difference, not necessarily newly written bytes: chunks
+may already occur in older snapshots or other groups. It includes whole guest
+roots, excludes the shared volume, and does not measure protected-data churn,
+monthly growth, retained history, or S3 costs.
+
 The owner reports a 1 Gbps internet connection; sustained upload and download
 rates have not been measured. Transferring 86.53 GB in 24 hours alone requires
 about 8 Mbps continuously, before allowing time for provisioning, database
@@ -53,31 +69,65 @@ calculation does not prove the recovery objective.
 
 These are observed or owner-identified locations, not a complete backup
 selection. Paths are inside the named guests; discovery examined filesystem
-metadata without reading data contents or publishing private filenames.
+metadata, selected configuration values, and database schema names without
+publishing private filenames, application records, or secrets.
 
 | Dataset | Candidate location |
 |---|---|
 | Home videos | The entire `/data/media/videos` directory in share, on the shared volume. |
-| Future photos | `/data/media/photos` in share, on the shared volume; absent on 2026-11-25. |
-| Vaultwarden | `/var/lib/vaultwarden/db.sqlite3` and related files on the guest root filesystem; custom attachment, Send, and database locations remain unverified. |
+| Future photos | `/data/media/photos` in share, on the shared volume; absent on 2026-11-26. |
+| Vaultwarden | `/var/lib/vaultwarden/db.sqlite3` and related files on the guest root filesystem; a standard-named RSA PEM file was also present. The standard admin configuration file was absent, with no config-file or dotenv override observed in the initial process environment. Custom attachment, Send, and database locations and independent key recovery remain unverified. |
 | Minecraft | World markers under `/opt/crafty-controller` on the guest root filesystem; verify all worlds and any additional data. |
 | Servarr | Docker configuration bind directories under `/app` on its guest root filesystem; check the shared `/data` mount for protected metadata. |
 | Jellyfin and statistics | `/var/lib/jellyfin` and the standard `/etc/jellyfin` configuration directory on the Jellyfin guest; PostgreSQL bind directory `/app/jellystat/postgres` in servarr. Verify the effective configuration and all data locations. |
-| Hermes dashboard | The service works from `/home/hermes` on the guest root filesystem, but its protected state has not been identified. |
+| Hermes dashboard | The service works from `/home/hermes` on the guest root filesystem. Three active SQLite databases and their sidecars were observed under `/home/hermes/.hermes`; one has table names containing generic configuration, link, session, and event terms. That directory used approximately 5.68 GiB and includes cache-named data. Complete protected state remains unverified. |
+
+A same-filesystem scan of the shared volume outside the selected video and
+photo directories found no NFO or database-like filenames among 1,206 regular
+files on 2026-11-26. It did not follow symlinks or cross filesystem boundaries,
+and does not rule out metadata in other formats or locations.
 
 On 2026-11-26 the running Vaultwarden and Jellyfin processes each had a
-database file and its WAL and shared-memory files open. Copying only the main
-database file would not establish a consistent backup. In the media-management
-guest, database-like files and SQLite WAL/shared-memory sidecars were present
-for Bazarr, Lidarr, Prowlarr, Radarr, and Sonarr; their presence alone does
-not prove current activity or backup consistency. The running Jellystat
-PostgreSQL container's `postgres` and `pg_dump` utilities both reported
-version 15.2; no dump was attempted. A Bedrock server was
-running in the Minecraft guest, with one candidate world directory under its
-working directory and three open file descriptors beneath that directory.
-Four world markers were found in the controller's server tree. No process
-named `java` was observed; these observations do not establish where every
-world or its configuration is stored.
+database file and its WAL and shared-memory files open. The dashboard service
+had three SQLite databases and their sidecars open. Copying only a main
+database file would not establish a consistent backup. Read-only schema
+inspection identified table-name categories for the dashboard and Jellyfin,
+but ignored uncheckpointed WAL changes and did not verify complete content.
+In the media-management guest, database-like files and SQLite WAL/shared-memory
+sidecars were present for Bazarr, Lidarr, Prowlarr, Radarr, and Sonarr; their
+presence alone does not prove current activity or backup consistency. The
+running Jellystat PostgreSQL container's `postgres` and `pg_dump` utilities
+both reported version 15.2; no dump was attempted. A Bedrock server was running
+in the Minecraft guest, with one candidate world directory under its working
+directory and three open file descriptors beneath that directory. Four world
+markers were found in the controller's server tree; a same-filesystem scan
+found none elsewhere on the guest root. A later three-marker size result used
+whitespace-sensitive path parsing and suppressed errors; repeating the parsing
+against current paths omitted the running world and reproduced the earlier
+size. No process named `java` was observed; these observations do not establish
+where every world or its configuration is stored.
+
+On 2026-11-26, a streamed reconstruction and listing of the latest Vaultwarden
+guest-root archive found entries for its standard database, its WAL and
+shared-memory files, and the standard-named RSA PEM file. No files were written
+to a restore destination; the listing does not prove a consistent, usable
+restore or independent key recovery.
+
+On the same date, the latest guest-root backup catalogs listed the three open
+dashboard databases and their six sidecars, the open Jellyfin database and its
+two sidecars, all four candidate Minecraft world markers, and all five
+media-management configuration bind directories. The servarr catalog also
+listed the statistics database's data directory, standard version marker, and
+base directory. A later scan of regular files matching database-name patterns
+in the five configuration directories matched their catalog entries; the scan
+did not follow symlinks or cross filesystems.
+
+Earlier scans also found two Sonarr database-like paths and a Lidarr WAL and
+shared-memory pair that were not in the latest catalog; those paths were no
+longer observed in the later scan. The Lidarr pair had modification times
+after the snapshot, but its existence at snapshot time is unknown. These
+changing filenames, catalog entries, and markers do not establish complete
+coverage or application consistency.
 
 ## Preferred PBS path
 
@@ -331,6 +381,7 @@ the recovery objectives should be described as implemented.
 - Proxmox PBS documentation for [S3-backed datastores](https://pbs.proxmox.com/docs/storage.html#datastores-with-s3-backend),
   [sync jobs](https://pbs.proxmox.com/docs/managing-remotes.html#sync-jobs),
   [the backup client](https://pbs.proxmox.com/docs/backup-client.html),
+  [catalog format](https://pbs.proxmox.com/docs/file-formats.html#proxmox-catalog-file-format-pcat1),
   [pruning and garbage collection](https://pbs.proxmox.com/docs/maintenance.html),
   and [incremental, deduplicated snapshots](https://pbs.proxmox.com/docs/technical-overview.html#snapshots).
 - [Proxmox VE backup modes and exclusions](https://pve.proxmox.com/pve-docs/vzdump.1.html).
@@ -349,7 +400,8 @@ the recovery objectives should be described as implemented.
 - [ECB reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html),
   [SQLite online backup](https://www.sqlite.org/backup.html), and
   [PostgreSQL SQL dumps](https://www.postgresql.org/docs/current/backup-dump.html).
-- [Jellyfin backup and restore](https://jellyfin.org/docs/general/administration/backup-and-restore/)
+- [Vaultwarden configuration template](https://github.com/dani-garcia/vaultwarden/blob/main/.env.template),
+  [Jellyfin backup and restore](https://jellyfin.org/docs/general/administration/backup-and-restore/),
   and [Crafty backup manager](https://docs.craftycontrol.com/pages/user-guide/backup-manager/).
   The Bedrock online-backup protocol was also checked against the vendor
   how-to distributed beside the running server on 2026-11-26.
