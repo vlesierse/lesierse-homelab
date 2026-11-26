@@ -169,6 +169,28 @@ referenced by a new snapshot. A delete marker or newer object version can also
 hide a locked version. Do not assume that enabling Object Lock or S3
 versioning by itself protects a usable PBS recovery point.
 
+### Candidate comparison
+
+All three candidates preserve the PBS datastore format. They require a
+versioned S3 source and have not been tested with this PBS datastore; the
+disposable pilot used an unversioned bucket. Every option also needs
+independently recoverable PBS keys, cloud access, and a role boundary that
+routine deployment credentials cannot bypass or change.
+
+| Candidate | Isolation and recovery | Cost and operational trade-offs |
+|---|---|---|
+| S3 versioning only | Previous object versions remain in the same bucket. A separate administrator must reconstruct a coherent datastore at a known complete point, accounting for delete markers and PBS maintenance. | No separate vault, but each retained version is billed as a full object. Reconstruction, retained-history growth, and recovery time are unproven. |
+| AWS Backup vault in the same account | A separately administered, locked vault can retain a copy of the bucket. Restore the copy to a new S3 bucket, then reconnect PBS. A separate role must control the vault, its key, and recovery. | Adds vault storage, restore, event, and S3 request costs. It is the simpler vault candidate, but PBS compatibility and the role boundary are unproven. |
+| AWS Backup vault in another account | The protected copy has a stronger account boundary. AWS requires both accounts to belong to the same AWS Organization; restoring into the original account requires copying the recovery point back first. | Adds account, organization, source/destination vault, key, and copy management, plus destination storage and possible additional costs. This is stronger separation, not independence from AWS itself. |
+
+AWS Backup Vault Lock in governance mode can be removed by an identity with
+the necessary permissions. Compliance mode becomes immutable after a grace
+period of at least three days, and locked recovery points cannot be deleted
+before their retention ends. A configuration mistake can therefore cause
+unavoidable ongoing costs. Lock mode, retention, and any production resources
+require explicit review and approval; no lock is deployed for this recovery
+path.
+
 One candidate is S3 versioning with a routine PBS identity that cannot delete
 object versions or change versioning, lifecycle, or access policies. A separate
 administrator would have to reconstruct the entire datastore at a known
@@ -191,13 +213,32 @@ recovery points have a maximum 35-day window; cross-account or cross-region
 copies are available, but copies of continuous backups do not support
 point-in-time restore. Longer protection therefore needs periodic recovery
 points and tested retention. AWS Backup does not restore bucket configuration,
-so policies and settings must be recoverable separately.
+so policies and settings must be recoverable separately. AWS documents that a
+restore can report `COMPLETED` even when some objects failed, and that
+restoring into an existing bucket does not overwrite existing objects or
+remove extra ones. A recovery exercise must inspect such failures and verify
+the PBS restore rather than relying on job status. AWS also documents a
+subsequent continuous backup reporting `COMPLETED` when all objects failed to
+be backed up.
+
 Continuous backups depend on S3 EventBridge notifications: AWS documents that
 disabling those notifications silently stops new changes being captured.
 Any such design needs independent monitoring and protection of that dependency.
-Independently recoverable keys and permissions remain necessary. Do not
-configure lifecycle expiration or lock policies until their interaction with
-PBS retention and maintenance has been demonstrated safely.
+Periodic-only backups scan the bucket; AWS documents that combining periodic
+snapshots with continuous backup can avoid those scans but depends on the
+continuous recovery point.
+
+AWS Backup also depends on the vault's KMS key and its permissions, separately
+from the PBS client encryption key. Independently recoverable keys and
+permissions remain necessary. Do not configure lifecycle expiration or lock
+policies until their interaction with PBS retention and maintenance has been
+demonstrated safely.
+
+The age of the latest independently protected PBS snapshot must be measured
+end to end. For example, a daily 01:00 PBS snapshot copied into a vault at
+02:00 can be almost 25 hours old immediately before the next vault copy, even
+when both jobs run daily. Frequency, lag, and failure alerts must jointly meet
+the 24-hour data-loss objective.
 
 For application consistency, evaluate SQLite's online backup API for
 Vaultwarden and the media-management databases, and PostgreSQL's logical
@@ -295,6 +336,9 @@ the recovery objectives should be described as implemented.
 - [Proxmox VE backup modes and exclusions](https://pve.proxmox.com/pve-docs/vzdump.1.html).
 - [Proxmox staff on Object Lock](https://forum.proxmox.com/threads/immutable-backups-on-s3-object-storage.169404/).
 - [AWS Backup for S3](https://docs.aws.amazon.com/aws-backup/latest/devguide/s3-backups.html),
+  [S3 restores](https://docs.aws.amazon.com/aws-backup/latest/devguide/restoring-s3.html),
+  [cross-account copies](https://docs.aws.amazon.com/aws-backup/latest/devguide/create-cross-account-backup.html),
+  [backup encryption](https://docs.aws.amazon.com/aws-backup/latest/devguide/encryption.html),
   [vault locks](https://docs.aws.amazon.com/aws-backup/latest/devguide/vault-lock.html),
   and [AWS Backup pricing](https://aws.amazon.com/backup/pricing/).
 - [AWS S3 pricing](https://aws.amazon.com/s3/pricing/),
