@@ -72,21 +72,21 @@ does not determine whether its data is protected.
 
 | Guest | Observed workload and root usage | Recovery priority | Latest local guest-job coverage |
 |---|---|---|---|
-| Share | Running file sharing; 2.86 GiB root plus the shared volume. | Undecided: the owner distinguishes rebuilding the guest image from recovering selected shared data. | Root included; shared volume excluded. |
+| Share | Running file sharing; 2.86 GiB root plus the shared volume. | Best-effort: the owner says the guest image can be rebuilt and its selected data restored after essential workloads. | Root included; shared volume excluded. |
 | Servarr | Running Docker-managed media services; 5.91 GiB root plus the shared volume. | Best-effort media workload. | Root included; shared volume excluded. |
 | Vaultwarden | Running password vault; 0.13 GiB root. | Essential, as named by the owner. | Root included; the preceding nine observed jobs did not include it. |
-| Hermes | Running dashboard; 9.21 GiB root. | Not yet classified. | Root included. |
+| Hermes | Running dashboard; 9.21 GiB root. | Best-effort, as named by the owner; its irreplaceable state remains protected. | Root included. |
 | Jellyfin | Running media service; 2.73 GiB root plus the shared volume. | Best-effort media workload. | Root included; shared volume excluded. |
 | Minecraft | Running game controller and Bedrock server; 2.16 GiB root. | Best-effort game workload; its worlds and state are protected. | Root included. |
 | GitHub runner | Running runner; 1.67 GiB root. | Best-effort. | Excluded. |
 | Printer | Stopped; its actual service and root usage were not inspected while stopped. | Best-effort. | Guest included in the latest job; application usability is unknown. |
 | Plaiteo runner | Stopped; its actual service and root usage were not inspected while stopped. | Best-effort. | Excluded. |
 
-The owner has not designated Hermes or Share as essential. The parent
-recovery requirements describe workloads providing irreplaceable files as
-essential, while the owner emphasizes rebuilding the Share guest separately
-from restoring its selected data. The recovery order for Share and its data
-requires an explicit decision rather than assuming these mean the same thing.
+On 2026-11-26 the owner chose to restore Share's selected data after essential
+workloads. The parent issue describes workloads providing irreplaceable files
+as essential; this distinction should be reconciled with that issue before
+treating it as a change to the parent recovery objectives. It does not change
+the data-loss objective or the requirement to protect that data.
 
 ### Protected-data inventory in progress
 
@@ -114,8 +114,8 @@ The owner reports no irreplaceable state or recovery-critical configuration for 
   firewall and forwarding configuration, then verify reachable ingress from
   outside the home network. Listener bindings do not establish public exposure.
   UniFi management remains out of scope.
-- Resolve the recovery order for Share, its selected data, and Hermes with the
-  owner. Identify the dashboard's actual protected state and confirm all
+- Reconcile the owner's Share recovery-order decision with the parent issue.
+  Identify the dashboard's actual protected state and confirm all
   application databases, attachments, world files, and shared-volume metadata
   without publishing filenames or contents.
 - Measure the complete selected datasets and repeat comparable measurements
