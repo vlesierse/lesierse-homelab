@@ -1,6 +1,6 @@
 # Off-site recovery assessment
 
-Assessment date: 2026-11-25. This is an evaluation of a **new** recovery
+Assessment date: 2026-11-26. This is an evaluation of a **new** recovery
 path, not a deployed system or a recovery procedure. No off-site homelab copies
 have been established. The [architecture overview](architecture.md) records the
 current inventory, local backup gaps, and remaining dataset unknowns.
@@ -49,6 +49,28 @@ about 8 Mbps continuously, before allowing time for provisioning, database
 restoration, application validation, retries, or protocol overhead. This
 calculation does not prove the recovery objective.
 
+## Known locations to verify
+
+These are observed or owner-identified locations, not a complete backup
+selection. Paths are inside the named guests; discovery examined filesystem
+metadata without reading data contents or publishing private filenames.
+
+| Dataset | Candidate location |
+|---|---|
+| Home videos | The entire `/data/media/videos` directory in share, on the shared volume. |
+| Future photos | `/data/media/photos` in share, on the shared volume; absent on 2026-11-25. |
+| Vaultwarden | `/var/lib/vaultwarden/db.sqlite3` and related files on the guest root filesystem; custom attachment, Send, and database locations remain unverified. |
+| Minecraft | World markers under `/opt/crafty-controller` on the guest root filesystem; verify all worlds and any additional data. |
+| Servarr | Docker configuration bind directories under `/app` on its guest root filesystem; check the shared `/data` mount for protected metadata. |
+| Jellyfin and statistics | `/var/lib/jellyfin` and the standard `/etc/jellyfin` configuration directory on the Jellyfin guest; PostgreSQL bind directory `/app/jellystat/postgres` in servarr. Verify the effective configuration and all data locations. |
+| Hermes dashboard | The service works from `/home/hermes` on the guest root filesystem, but its protected state has not been identified. |
+
+On 2026-11-26 the running Vaultwarden and Jellyfin processes each had a
+database file and its WAL and shared-memory files open. Copying only the main
+database file would not establish a consistent backup. No process named `java`
+was observed in the Minecraft guest that day; this does not exclude other
+server implementations or establish where all worlds are stored.
+
 ## Preferred PBS path
 
 The owner prefers local PBS snapshots followed by an incremental S3 copy and,
@@ -75,7 +97,10 @@ deliberately; confirm how to exclude caches without excluding protected data.
 The shared volume is not included in the observed guest backups and needs a
 separate, selectively scoped PBS client backup or another proven PBS-compatible
 approach. Recreating the host also requires host configuration from code and
-any independently held recovery prerequisites.
+any independently held recovery prerequisites. Proxmox documents exclusion
+patterns for container backups, while the PBS client skips nested mount points
+unless explicitly included; the actual selections and future photo-directory
+coverage must be verified rather than inferred from a successful job.
 
 The S3-backed datastore requires a persistent local cache; Proxmox recommends
 64-128 GiB. A fresh PBS installation can reuse the S3 datastore with the same
@@ -105,23 +130,46 @@ referenced by a new snapshot. A delete marker or newer object version can also
 hide a locked version. Do not assume that enabling Object Lock or S3
 versioning by itself protects a usable PBS recovery point.
 
+One candidate is S3 versioning with a routine PBS identity that cannot delete
+object versions or change versioning, lifecycle, or access policies. A separate
+administrator would have to reconstruct the entire datastore at a known
+complete recovery point, including correctly handling delete markers and
+concurrent maintenance. Individual recoverable objects do not prove that the
+resulting PBS datastore is consistent or restorable. Version storage, restore
+requests, recovery time, and protection from the routine deployment identity
+also need evaluation; S3 charges for each full object version.
+
 An independently administered AWS Backup vault is one possible protection to
 evaluate, not a selected or fully costed solution. AWS Backup for S3 requires
 versioning and makes subsequent backups incrementally, but its compatibility
 with a live PBS datastore, a consistent restore of all required chunks and
 metadata, authority separation, and costs are unproven. It also charges
 minimum 128 KB per backed-up S3 object, making object counts relevant.
+Its initial backup includes existing object versions and delete markers.
+Continuous backups depend on S3 EventBridge notifications: AWS documents that
+disabling those notifications silently stops new changes being captured.
+Any such design needs independent monitoring and protection of that dependency.
 Independently recoverable keys and permissions remain necessary. Do not
 configure lifecycle expiration or lock policies until their interaction with
 PBS retention and maintenance has been demonstrated safely.
 
-For application consistency, evaluate SQLite's online backup API for the
-Vaultwarden database and PostgreSQL's logical backup tools for the observed
-statistics database. The vault guest did not have the `sqlite3` executable
-available during discovery. Identify and validate the actual databases,
-attachments, configuration, and Minecraft save/quiesce mechanism first. Avoid
-executing backup actions stored in a remotely writable repository; any local
-hooks must be independently controlled, fail explicitly, and be restore-tested.
+For application consistency, evaluate SQLite's online backup API for
+Vaultwarden and PostgreSQL's logical backup tools for the observed statistics
+database. The vault guest did not have the `sqlite3` executable available
+during discovery. Jellyfin's documented built-in backup supports online
+database backup, with metadata optional; the installed package version on
+2026-11-26 was newer than the version that introduced it. Verify automation,
+required configuration and metadata coverage, free-space requirements, and
+restoration before relying on it. Jellyfin's manual backup instructions
+require stopping the service. Crafty's documentation recommends stopping a
+game server during its file-copy backup; an acceptable no-disruption
+consistency method is not yet established. No application backup or service
+stop was performed.
+
+Identify and validate the actual databases, attachments, configuration, and
+Minecraft save/quiesce mechanism first. Avoid executing backup actions stored
+in a remotely writable repository; any local hooks must be independently
+controlled, fail explicitly, and be restore-tested.
 
 ## Conditional S3 cost scenario
 
@@ -187,8 +235,10 @@ the recovery objectives should be described as implemented.
 
 - Proxmox PBS documentation for [S3-backed datastores](https://pbs.proxmox.com/docs/storage.html#datastores-with-s3-backend),
   [sync jobs](https://pbs.proxmox.com/docs/managing-remotes.html#sync-jobs),
+  [the backup client](https://pbs.proxmox.com/docs/backup-client.html),
   [pruning and garbage collection](https://pbs.proxmox.com/docs/maintenance.html),
   and [incremental, deduplicated snapshots](https://pbs.proxmox.com/docs/technical-overview.html#snapshots).
+- [Proxmox VE backup modes and exclusions](https://pve.proxmox.com/pve-docs/vzdump.1.html).
 - [Proxmox staff on Object Lock](https://forum.proxmox.com/threads/immutable-backups-on-s3-object-storage.169404/).
 - [AWS Backup for S3](https://docs.aws.amazon.com/aws-backup/latest/devguide/s3-backups.html),
   [vault locks](https://docs.aws.amazon.com/aws-backup/latest/devguide/vault-lock.html),
@@ -201,3 +251,5 @@ the recovery objectives should be described as implemented.
 - [ECB reference rates](https://www.ecb.europa.eu/stats/policy_and_exchange_rates/euro_reference_exchange_rates/html/index.en.html),
   [SQLite online backup](https://www.sqlite.org/backup.html), and
   [PostgreSQL SQL dumps](https://www.postgresql.org/docs/current/backup-dump.html).
+- [Jellyfin backup and restore](https://jellyfin.org/docs/general/administration/backup-and-restore/)
+  and [Crafty backup manager](https://docs.craftycontrol.com/pages/user-guide/backup-manager/).
